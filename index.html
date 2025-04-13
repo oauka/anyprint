@@ -1,0 +1,237 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>명함 에디터 with 자 기능</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.2.4/fabric.min.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      background: #f5f5f5;
+    }
+    .toolbar {
+      background: #fff;
+      padding: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      border-bottom: 1px solid #ccc;
+    }
+    #canvasContainer {
+      position: relative;
+      display: inline-block;
+      margin: 20px;
+    }
+    canvas {
+      border: 1px solid #333;
+      display: block;
+    }
+    .ruler {
+      position: absolute;
+      background: #eee;
+      font-size: 10px;
+      color: #333;
+      z-index: 10;
+    }
+    .ruler.x {
+      top: -20px;
+      left: 0;
+      height: 20px;
+      width: 1087px;
+      display: flex;
+    }
+    .ruler.y {
+      top: 0;
+      left: -30px;
+      width: 30px;
+      height: 614px;
+      display: flex;
+      flex-direction: column;
+    }
+    .ruler.x div, .ruler.y div {
+      border-right: 1px solid #ccc;
+      width: 37.8px;
+      height: 100%;
+      text-align: center;
+    }
+    .ruler.y div {
+      border-bottom: 1px solid #ccc;
+      height: 37.8px;
+      line-height: 37.8px;
+      width: 100%;
+      border-right: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <label>배경:</label><input type="color" id="bgColor" value="#ffffff" />
+    <label>글자색:</label><input type="color" id="fontColor" value="#000000" />
+    <label>크기:</label>
+    <select id="fontSizeSelect"></select>
+    <button onclick="addGuideLine('horizontal')">가로선</button>
+    <button onclick="addGuideLine('vertical')">세로선</button>
+    <input type="file" id="logoUpload" />
+    <button onclick="downloadImage()">저장</button>
+  </div>
+
+  <div id="canvasContainer">
+    <div class="ruler x" id="rulerX"></div>
+    <div class="ruler y" id="rulerY"></div>
+    <canvas id="canvas" width="1087" height="614"></canvas>
+  </div>
+
+  <script>
+    const canvas = new fabric.Canvas("canvas", { selection: true });
+    const CANVAS_WIDTH = 1087;
+    const CANVAS_HEIGHT = 614;
+    const frameX = (CANVAS_WIDTH - 1063) / 2;
+    const frameY = (CANVAS_HEIGHT - 591) / 2;
+    const safeWidth = 1043;
+    const safeHeight = 578;
+    const centerX = CANVAS_WIDTH / 2;
+    const textWidth = safeWidth * 0.85;
+
+    canvas.setBackgroundColor("#ffffff", canvas.renderAll.bind(canvas));
+
+    const trimBox = new fabric.Rect({
+      left: frameX,
+      top: frameY,
+      width: 1063,
+      height: 591,
+      stroke: "red",
+      strokeWidth: 1,
+      fill: "",
+      selectable: false,
+      evented: false
+    });
+
+    const safeBox = new fabric.Rect({
+      left: (CANVAS_WIDTH - safeWidth) / 2,
+      top: (CANVAS_HEIGHT - safeHeight) / 2,
+      width: safeWidth,
+      height: safeHeight,
+      stroke: "rgba(0,0,0,0.05)",
+      strokeWidth: 1,
+      fill: "",
+      selectable: false,
+      evented: false
+    });
+
+    canvas.add(trimBox);
+    canvas.add(safeBox);
+
+    // 기준점 0,0은 trimBox 내부 왼쪽 위 기준
+    const originX = frameX;
+    const originY = frameY;
+
+    const defaultTexts = [
+      { text: "홍길동", top: originY + 60, fontSize: 10 },
+      { text: "대표", top: originY + 120, fontSize: 10 },
+      { text: "010-1234-5678", top: originY + 180, fontSize: 10 }
+    ];
+
+    defaultTexts.forEach(item => {
+      const t = new fabric.IText(item.text, {
+        top: item.top,
+        left: centerX,
+        fontSize: item.fontSize,
+        fill: "#000000",
+        width: textWidth,
+        textAlign: "center",
+        originX: "center",
+        splitByGrapheme: true
+      });
+      canvas.add(t);
+    });
+
+    function addGuideLine(type) {
+      const isHorizontal = type === "horizontal";
+      const line = new fabric.Line(
+        isHorizontal ? [0, originY + 100, CANVAS_WIDTH, originY + 100] : [originX + 100, 0, originX + 100, CANVAS_HEIGHT],
+        {
+          stroke: "rgba(0,0,255,0.4)",
+          strokeDashArray: [5, 5],
+          strokeWidth: 1,
+          selectable: true,
+          hasControls: false
+        }
+      );
+      canvas.add(line);
+      canvas.bringToFront(line);
+    }
+
+    function downloadImage() {
+      const dataURL = canvas.toDataURL({
+        format: "png",
+        quality: 1.0
+      });
+      const a = document.createElement("a");
+      a.href = dataURL;
+      a.download = "anyprint.png";
+      a.click();
+    }
+
+    document.getElementById("bgColor").oninput = e => {
+      canvas.setBackgroundColor(e.target.value, canvas.renderAll.bind(canvas));
+    };
+
+    document.getElementById("fontColor").oninput = e => {
+      const obj = canvas.getActiveObject();
+      if (obj && obj.type === "i-text") {
+        obj.set("fill", e.target.value);
+        canvas.renderAll();
+      }
+    };
+
+    const fontSizeSelect = document.getElementById("fontSizeSelect");
+    for (let i = 6; i <= 72; i++) {
+      const opt = document.createElement("option");
+      opt.value = i;
+      opt.textContent = i + " pt";
+      if (i === 10) opt.selected = true;
+      fontSizeSelect.appendChild(opt);
+    }
+
+    fontSizeSelect.onchange = e => {
+      const obj = canvas.getActiveObject();
+      if (obj && obj.type === "i-text") {
+        obj.set("fontSize", parseInt(e.target.value));
+        canvas.renderAll();
+      }
+    };
+
+    document.getElementById("logoUpload").onchange = function (e) {
+      const reader = new FileReader();
+      reader.onload = function (event) {
+        fabric.Image.fromURL(event.target.result, function (img) {
+          img.scaleToWidth(100);
+          img.left = originX + 20;
+          img.top = originY + 20;
+          canvas.add(img);
+        });
+      };
+      reader.readAsDataURL(e.target.files[0]);
+    };
+
+    // 눈금자 생성
+    const rulerX = document.getElementById("rulerX");
+    const rulerY = document.getElementById("rulerY");
+    const numX = Math.floor(CANVAS_WIDTH / 37.8);
+    const numY = Math.floor(CANVAS_HEIGHT / 37.8);
+    for (let i = 0; i <= numX; i++) {
+      const d = document.createElement("div");
+      d.textContent = i;
+      rulerX.appendChild(d);
+    }
+    for (let i = 0; i <= numY; i++) {
+      const d = document.createElement("div");
+      d.textContent = i;
+      rulerY.appendChild(d);
+    }
+  </script>
+</body>
+</html>
