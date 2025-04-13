@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>명함 에디터 - 전체 기능 통합</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.2.4/fabric.min.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f5f5f5;
+    }
+    .toolbar {
+      background: #ffffff;
+      border-bottom: 1px solid #ccc;
+      padding: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .toolbar label {
+      font-weight: bold;
+    }
+    canvas {
+      border: 1px solid #ccc;
+      display: block;
+      margin: 20px auto;
+    }
+    .canvas-container {
+      text-align: center;
+    }
+    #selectedLabel {
+      margin: 10px;
+      text-align: center;
+      font-weight: bold;
+    }
+    .canvas-wrapper {
+      overflow: auto;
+      text-align: center;
+    }
+    @media (max-width: 768px) {
+      canvas {
+        width: 100% !important;
+        height: auto !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <label>배경색:</label> <input type="color" id="bgColor" value="#ffffff">
+    <label>글자 색상:</label> <input type="color" id="fontColor" value="#000000">
+    <label>글자 크기:</label>
+    <select id="fontSizeSelect"></select>
+    <label>해상도:</label>
+    <select id="dpiSelect">
+      <option value="72">72 DPI</option>
+      <option value="100">100 DPI</option>
+      <option value="200">200 DPI</option>
+      <option value="300" selected>300 DPI</option>
+    </select>
+    <button onclick="addGuideLine('horizontal')">가로 가이드선 추가</button>
+    <button onclick="addGuideLine('vertical')">세로 가이드선 추가</button>
+    <input type="file" id="logoUpload">
+    <button onclick="downloadImage()">JPG 저장</button>
+    <label>캔버스 보기:</label>
+    <button onclick="setZoom(1)">100%</button>
+    <button onclick="setZoom(0.5)">50%</button>
+    <button onclick="setZoom(2)">200%</button>
+    <label>면 선택:</label>
+    <select onchange="switchCanvas(this.value)">
+      <option value="front">앞면</option>
+      <option value="back">뒷면</option>
+    </select>
+  </div>
+  <div id="selectedLabel">선택된 항목 없음</div>
+  <div class="canvas-wrapper">
+    <canvas id="frontCanvas" width="1087" height="614"></canvas>
+    <canvas id="backCanvas" width="1087" height="614" style="display:none; margin-top:20px;"></canvas>
+  </div>
+  <script>
+    const CANVAS_WIDTH = 1087;
+    const CANVAS_HEIGHT = 614;
+    const centerX = CANVAS_WIDTH / 2;
+    const safeWidth = 1043;
+    const safeHeight = 578;
+    const textWidth = safeWidth * 0.85;
+
+    const canvases = {
+      front: new fabric.Canvas('frontCanvas', { selection: true }),
+      back: new fabric.Canvas('backCanvas', { selection: true })
+    };
+    let currentCanvas = canvases.front;
+
+    function initCanvas(canvas) {
+      canvas.setBackgroundColor('#ffffff', canvas.renderAll.bind(canvas));
+
+      const trimBox = new fabric.Rect({
+        left: (CANVAS_WIDTH - 1063) / 2,
+        top: (CANVAS_HEIGHT - 591) / 2,
+        width: 1063,
+        height: 591,
+        stroke: 'red',
+        strokeWidth: 1,
+        fill: '',
+        selectable: false,
+        evented: false
+      });
+
+      const safeBox = new fabric.Rect({
+        left: (CANVAS_WIDTH - safeWidth) / 2,
+        top: (CANVAS_HEIGHT - safeHeight) / 2,
+        width: safeWidth,
+        height: safeHeight,
+        stroke: 'rgba(0,0,0,0.05)',
+        strokeWidth: 1,
+        fill: '',
+        selectable: false,
+        evented: false
+      });
+
+      canvas.add(trimBox);
+      canvas.add(safeBox);
+    }
+
+    function addDefaultTexts(canvas) {
+      const nameText = new fabric.IText('홍길동', {
+        top: 200, left: centerX, fontSize: 10, fill: '#000000',
+        width: textWidth, textAlign: 'center', originX: 'center',
+        splitByGrapheme: true
+      });
+      nameText.customType = '이름';
+
+      const positionText = new fabric.IText('대표', {
+        top: 260, left: centerX, fontSize: 10, fill: '#000000',
+        width: textWidth, textAlign: 'center', originX: 'center',
+        splitByGrapheme: true
+      });
+      positionText.customType = '직위';
+
+      const phoneText = new fabric.IText('010-1234-5678', {
+        top: 320, left: centerX, fontSize: 10, fill: '#000000',
+        width: textWidth, textAlign: 'center', originX: 'center',
+        splitByGrapheme: true
+      });
+      phoneText.customType = '연락처';
+
+      canvas.add(nameText, positionText, phoneText);
+    }
+
+    function setZoom(level) {
+      currentCanvas.setZoom(level);
+    }
+
+    function switchCanvas(target) {
+      document.getElementById('frontCanvas').style.display = target === 'front' ? 'block' : 'none';
+      document.getElementById('backCanvas').style.display = target === 'back' ? 'block' : 'none';
+      currentCanvas = canvases[target];
+    }
+
+    for (let key in canvases) {
+      initCanvas(canvases[key]);
+      addDefaultTexts(canvases[key]);
+
+      canvases[key].on('selection:created', updateSelectedLabel);
+      canvases[key].on('selection:updated', updateSelectedLabel);
+      canvases[key].on('selection:cleared', () => {
+        document.getElementById('selectedLabel').innerText = '선택된 항목 없음';
+      });
+    }
+
+    function updateSelectedLabel(e) {
+      const obj = e.selected?.[0];
+      if (obj && obj.customType) {
+        document.getElementById('selectedLabel').innerText = `현재 선택 항목: ${obj.customType}`;
+        document.getElementById('fontSizeSelect').value = obj.fontSize;
+      }
+    }
+
+    function addGuideLine(type) {
+      const isHorizontal = type === 'horizontal';
+      const guide = new fabric.Line(
+        isHorizontal ? [0, 100, CANVAS_WIDTH, 100] : [100, 0, 100, CANVAS_HEIGHT],
+        {
+          stroke: 'rgba(0,0,0,0.3)',
+          strokeDashArray: [5, 5],
+          strokeWidth: 1,
+          selectable: true,
+          hasControls: false,
+          lockRotation: true,
+          objectCaching: false
+        }
+      );
+      currentCanvas.add(guide);
+      currentCanvas.bringToFront(guide);
+    }
+
+    document.getElementById('fontColor').oninput = e => {
+      const obj = currentCanvas.getActiveObject();
+      if (obj && obj.type === 'i-text') {
+        obj.set('fill', e.target.value);
+        currentCanvas.renderAll();
+      }
+    };
+
+    document.getElementById('bgColor').oninput = e => {
+      currentCanvas.setBackgroundColor(e.target.value, currentCanvas.renderAll.bind(currentCanvas));
+    };
+
+    const fontSizeSelect = document.getElementById('fontSizeSelect');
+    for (let i = 6; i <= 72; i++) {
+      const option = document.createElement('option');
+      option.value = i;
+      option.textContent = `${i} pt`;
+      if (i === 10) option.selected = true;
+      fontSizeSelect.appendChild(option);
+    }
+
+    fontSizeSelect.onchange = e => {
+      const obj = currentCanvas.getActiveObject();
+      if (obj && obj.type === 'i-text') {
+        obj.set('fontSize', parseInt(e.target.value));
+        currentCanvas.renderAll();
+      }
+    };
+
+    document.getElementById('logoUpload').onchange = function(e) {
+      const reader = new FileReader();
+      reader.onload = function(f) {
+        fabric.Image.fromURL(f.target.result, function(img) {
+          img.scaleToWidth(100);
+          img.left = CANVAS_WIDTH - 150;
+          img.top = CANVAS_HEIGHT - 150;
+          currentCanvas.add(img);
+          currentCanvas.renderAll();
+        });
+      };
+      reader.readAsDataURL(e.target.files[0]);
+    };
+
+    function downloadImage() {
+      const dpi = parseInt(document.getElementById('dpiSelect').value);
+      const scale = dpi / 72;
+      const dataURL = currentCanvas.toDataURL({
+        format: 'jpeg',
+        multiplier: scale,
+        quality: 1.0
+      });
+      const link = document.createElement('a');
+      link.href = dataURL;
+      link.download = `business_card_${dpi}dpi.jpg`;
+      link.click();
+    }
+  </script>
+</body>
+</html>
