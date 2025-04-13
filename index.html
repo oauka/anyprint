@@ -1,0 +1,211 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>명함 에디터</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/4.6.0/fabric.min.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f0f0f0;
+    }
+    .toolbar {
+      background: #fff;
+      border-bottom: 2px solid #aaa;
+      padding: 15px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      gap: 15px;
+    }
+    .toolbar label {
+      font-size: 16px;
+      font-weight: bold;
+    }
+    .toolbar input,
+    .toolbar select,
+    .toolbar button {
+      font-size: 16px;
+      padding: 6px 10px;
+    }
+    .canvas-wrapper {
+      display: flex;
+      justify-content: center;
+      padding: 20px;
+    }
+    canvas {
+      border: 2px solid #aaa;
+      background-color: #fff;
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <label>배경색:</label> <input type="color" id="bgColor" value="#ffffff" />
+    <label>글자색:</label> <input type="color" id="fontColor" value="#000000" />
+    <label>글자 크기:</label>
+    <select id="fontSizeSelect"></select>
+    <button onclick="addText()">➕ 텍스트 추가</button>
+    <input type="file" id="logoUpload" multiple />
+    <button onclick="addGuideLine('horizontal')">📏 가로선</button>
+    <button onclick="addGuideLine('vertical')">📏 세로선</button>
+    <button onclick="setZoom(0.5)">50%</button>
+    <button onclick="setZoom(1)">100%</button>
+    <button onclick="setZoom(2)">200%</button>
+    <button onclick="downloadImage()">💾 저장</button>
+  </div>
+
+  <div class="canvas-wrapper">
+    <canvas id="mainCanvas" width="1087" height="614"></canvas>
+  </div>
+
+  <script>
+    const canvas = new fabric.Canvas('mainCanvas', { selection: true });
+    canvas.setBackgroundColor('#ffffff', canvas.renderAll.bind(canvas));
+
+    const CANVAS_WIDTH = 1087;
+    const CANVAS_HEIGHT = 614;
+    const centerX = CANVAS_WIDTH / 2;
+    const safeWidth = 1043;
+    const safeHeight = 578;
+    const textWidth = safeWidth * 0.85;
+
+    const trimBox = new fabric.Rect({
+      left: (CANVAS_WIDTH - 1063) / 2,
+      top: (CANVAS_HEIGHT - 591) / 2,
+      width: 1063,
+      height: 591,
+      stroke: 'red',
+      strokeWidth: 1,
+      fill: '',
+      selectable: false,
+      evented: false
+    });
+
+    const safeBox = new fabric.Rect({
+      left: (CANVAS_WIDTH - safeWidth) / 2,
+      top: (CANVAS_HEIGHT - safeHeight) / 2,
+      width: safeWidth,
+      height: safeHeight,
+      stroke: 'rgba(0,0,0,0.2)',
+      strokeWidth: 1,
+      fill: '',
+      selectable: false,
+      evented: false
+    });
+
+    canvas.add(trimBox, safeBox);
+
+    const defaultTexts = [
+      { text: '홍길동', top: 180, fontSize: 24 },
+      { text: '대표', top: 240, fontSize: 20 },
+      { text: '010-1234-5678', top: 300, fontSize: 20 }
+    ];
+    defaultTexts.forEach(item => {
+      const t = new fabric.IText(item.text, {
+        top: item.top,
+        left: centerX,
+        fontSize: item.fontSize,
+        fill: '#000',
+        width: textWidth,
+        textAlign: 'center',
+        originX: 'center',
+        splitByGrapheme: true
+      });
+      canvas.add(t);
+    });
+
+    function addText() {
+      const text = new fabric.IText('새 텍스트', {
+        top: 360,
+        left: centerX,
+        fontSize: 20,
+        fill: '#000000',
+        width: textWidth,
+        textAlign: 'center',
+        originX: 'center',
+        splitByGrapheme: true
+      });
+      canvas.add(text);
+      canvas.setActiveObject(text);
+    }
+
+    function addGuideLine(type) {
+      const line = new fabric.Line(
+        type === 'horizontal'
+          ? [0, 100, CANVAS_WIDTH, 100]
+          : [100, 0, 100, CANVAS_HEIGHT],
+        {
+          stroke: 'rgba(0,0,255,0.4)',
+          strokeDashArray: [5, 5],
+          strokeWidth: 1,
+          selectable: true,
+          hasControls: false
+        }
+      );
+      canvas.add(line);
+      canvas.bringToFront(line);
+    }
+
+    function setZoom(zoomLevel) {
+      canvas.setZoom(zoomLevel);
+    }
+
+    function downloadImage() {
+      const link = document.createElement('a');
+      link.href = canvas.toDataURL({ format: 'jpeg', quality: 1.0 });
+      link.download = 'business_card.jpg';
+      link.click();
+    }
+
+    document.getElementById('bgColor').oninput = e => {
+      canvas.setBackgroundColor(e.target.value, canvas.renderAll.bind(canvas));
+    };
+
+    document.getElementById('fontColor').oninput = e => {
+      const obj = canvas.getActiveObject();
+      if (obj && obj.type === 'i-text') {
+        obj.set('fill', e.target.value);
+        canvas.renderAll();
+      }
+    };
+
+    const fontSizeSelect = document.getElementById('fontSizeSelect');
+    for (let i = 6; i <= 72; i++) {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = `${i} pt`;
+      if (i === 20) opt.selected = true;
+      fontSizeSelect.appendChild(opt);
+    }
+
+    fontSizeSelect.onchange = e => {
+      const obj = canvas.getActiveObject();
+      if (obj && obj.type === 'i-text') {
+        obj.set('fontSize', parseInt(e.target.value));
+        canvas.renderAll();
+      }
+    };
+
+    document.getElementById('logoUpload').onchange = function (e) {
+      Array.from(e.target.files).forEach(file => {
+        const reader = new FileReader();
+        reader.onload = function (f) {
+          fabric.Image.fromURL(f.target.result, function (img) {
+            img.scaleToWidth(200);
+            img.left = centerX;
+            img.top = 400;
+            canvas.add(img);
+          });
+        };
+        reader.readAsDataURL(file);
+      });
+    };
+  </script>
+</body>
+</html>
