@@ -1,0 +1,214 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>애니프린트 - 가이드선 개선</title>
+  <script src="https://cdn.jsdelivr.net/npm/fabric@5.2.4/dist/fabric.min.js"></script>
+  <style>
+    body { margin: 0; font-family: sans-serif; background: #f5f5f5; text-align: center; }
+    .toolbar {
+      padding: 10px; background: #fff; display: inline-flex; flex-wrap: wrap;
+      gap: 10px; justify-content: center; border-bottom: 1px solid #ccc;
+    }
+    .canvas-wrapper {
+      display: inline-block; margin: 20px auto;
+    }
+    canvas { border: 1px solid #333; background: #fff; }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <label>배경:</label><input type="color" id="bgColor" value="#ffffff" />
+    <label>글자색:</label><input type="color" id="fontColor" value="#000000" />
+    <label>크기:</label>
+    <select id="fontSizeSelect"></select>
+    <button onclick="addGuideLine('horizontal')">가로선</button>
+    <button onclick="addGuideLine('vertical')">세로선</button>
+    <button onclick="toggleFixedGuides()">기준선 On/Off</button>
+    <input type="file" id="logoUpload" />
+    <button onclick="downloadImage()">저장</button>
+  </div>
+
+  <div class="canvas-wrapper">
+    <canvas id="canvas" width="1087" height="614"></canvas>
+  </div>
+
+  <script>
+    const canvas = new fabric.Canvas('canvas', {
+      selection: true,
+      preserveObjectStacking: true,
+      renderOnAddRemove: true
+    });
+
+    const CANVAS_WIDTH = 1087;
+    const CANVAS_HEIGHT = 614;
+    const frameX = (CANVAS_WIDTH - 1063) / 2;
+    const frameY = (CANVAS_HEIGHT - 591) / 2;
+    const frameWidth = 1063;
+    const frameHeight = 591;
+    const centerX = frameX + frameWidth / 2;
+    const centerY = frameY + frameHeight / 2;
+
+    canvas.setBackgroundColor('#ffffff', canvas.renderAll.bind(canvas));
+
+    const trimBox = new fabric.Rect({
+      left: frameX, top: frameY, width: frameWidth, height: frameHeight,
+      stroke: "red", strokeWidth: 1, fill: "", selectable: false, evented: false
+    });
+    canvas.add(trimBox);
+
+    const fixedGuideLines = [];
+
+    function addFixedGuides() {
+      const fractions = [1/2, 1/3, 2/3, 1/4, 3/4];
+      fixedGuideLines.length = 0;
+
+      fractions.forEach(f => {
+        const x = frameX + frameWidth * f;
+        const y = frameY + frameHeight * f;
+
+        const vLine = new fabric.Line([x, frameY, x, frameY + frameHeight], {
+          stroke: 'rgba(0,0,0,0.08)', strokeWidth: 1, selectable: false, evented: false
+        });
+        const hLine = new fabric.Line([frameX, y, frameX + frameWidth, y], {
+          stroke: 'rgba(0,0,0,0.08)', strokeWidth: 1, selectable: false, evented: false
+        });
+
+        canvas.add(vLine);
+        canvas.add(hLine);
+        fixedGuideLines.push(vLine, hLine);
+      });
+    }
+
+    let guidesVisible = true;
+    function toggleFixedGuides() {
+      guidesVisible = !guidesVisible;
+      fixedGuideLines.forEach(line => line.visible = guidesVisible);
+      canvas.renderAll();
+    }
+
+    function addGuideLine(type) {
+      const isHorizontal = type === 'horizontal';
+      const pos = isHorizontal ? centerY : centerX;
+
+      const line = new fabric.Line(
+        isHorizontal
+          ? [frameX, pos, frameX + frameWidth, pos]
+          : [pos, frameY, pos, frameY + frameHeight],
+        {
+          stroke: "rgba(0,0,255,0.3)",
+          strokeDashArray: [5, 5],
+          strokeWidth: 1,
+          selectable: true,
+          hasControls: false,
+          hasBorders: false,
+          hoverCursor: "move",
+          objectCaching: false
+        }
+      );
+
+      // 고정된 방향으로만 이동 (가로선은 세로로만, 세로선은 가로로만)
+      line.lockMovementX = isHorizontal;  // 가로선은 X 이동 금지
+      line.lockMovementY = !isHorizontal; // 세로선은 Y 이동 금지
+
+      canvas.add(line);
+      canvas.renderAll();
+    }
+
+    const defaultTexts = [
+      { text: "홍길동", top: centerY - 60 },
+      { text: "대표", top: centerY },
+      { text: "010-1234-5678", top: centerY + 60 }
+    ];
+    defaultTexts.forEach(item => {
+      const text = new fabric.IText(item.text, {
+        left: centerX,
+        top: item.top,
+        fontSize: 10,
+        fill: "#000",
+        originX: "center",
+        textAlign: "center",
+        width: 500,
+        splitByGrapheme: true
+      });
+      canvas.add(text);
+    });
+
+    canvas.on("object:moving", function (e) {
+      const SNAP_TOLERANCE = 5;
+      const obj = e.target;
+      if (!obj) return;
+
+      canvas.getObjects().forEach(o => {
+        if (o === obj || o.type !== 'line') return;
+
+        const isHorizontal = o.y1 === o.y2;
+        const guidePos = isHorizontal ? o.top || o.y1 : o.left || o.x1;
+        const objPos = isHorizontal ? obj.top : obj.left;
+
+        if (Math.abs(guidePos - objPos) < SNAP_TOLERANCE) {
+          if (isHorizontal) obj.top = guidePos;
+          else obj.left = guidePos;
+        }
+      });
+
+      // 강제 리렌더링으로 잔상 제거
+      canvas.renderAll();
+    });
+
+    document.getElementById("bgColor").oninput = e => {
+      canvas.setBackgroundColor(e.target.value, canvas.renderAll.bind(canvas));
+    };
+
+    document.getElementById("fontColor").oninput = e => {
+      const obj = canvas.getActiveObject();
+      if (obj && obj.type === "i-text") {
+        obj.set("fill", e.target.value);
+        canvas.renderAll();
+      }
+    };
+
+    const fontSizeSelect = document.getElementById("fontSizeSelect");
+    for (let i = 6; i <= 72; i++) {
+      const opt = document.createElement("option");
+      opt.value = i;
+      opt.textContent = i + " pt";
+      if (i === 10) opt.selected = true;
+      fontSizeSelect.appendChild(opt);
+    }
+
+    fontSizeSelect.onchange = e => {
+      const obj = canvas.getActiveObject();
+      if (obj && obj.type === "i-text") {
+        obj.set("fontSize", parseInt(e.target.value));
+        canvas.renderAll();
+      }
+    };
+
+    document.getElementById("logoUpload").onchange = function (e) {
+      const reader = new FileReader();
+      reader.onload = function (event) {
+        fabric.Image.fromURL(event.target.result, function (img) {
+          img.scaleToWidth(100);
+          img.left = frameX + 20;
+          img.top = frameY + 20;
+          canvas.add(img);
+        });
+      };
+      reader.readAsDataURL(e.target.files[0]);
+    };
+
+    function downloadImage() {
+      const dataURL = canvas.toDataURL({ format: "png", quality: 1.0 });
+      const a = document.createElement("a");
+      a.href = dataURL;
+      a.download = "anyprint_final.png";
+      a.click();
+    }
+
+    addFixedGuides();
+    canvas.renderAll();  // 초기 렌더링
+  </script>
+</body>
+</html>
